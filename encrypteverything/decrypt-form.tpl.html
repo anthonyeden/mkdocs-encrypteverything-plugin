@@ -1,0 +1,85 @@
+<div id="mkdocs-encrypted-content" style="display:none">{{ ciphertext_bundle }}</div>
+<div id="mkdocs-decrypted-content">
+    <form id="mkdocs-decrypt-form">
+        <h1>Password protected content</h1>
+        <input type="password" id="mkdocs-content-password" placeholder="Provide password and press enter" />
+        <p id="mkdocs-decrypt-msg"></p>
+    </form>
+</div>
+
+{% for library in js_libraries %}
+<script type="text/javascript" src="{{ library }}"></script>
+{% endfor %}
+
+<script type="text/javascript">
+    (function() {
+        var strip_padding = function(padded_content, padding_char) {
+            /* Strips the padding character from decrypted content. */
+            for (var i = padded_content.length; i > 0; i--) {
+                if (padded_content[i - 1] !== padding_char) {
+                    return padded_content.slice(0, i);
+                }
+            }
+        };
+
+        var decrypt_content = function(password, iv_b64, ciphertext_b64, padding_char) {
+            /* Decrypts the content from the ciphertext bundle. */
+            var key = CryptoJS.MD5(password),
+                iv = CryptoJS.enc.Base64.parse(iv_b64),
+                ciphertext = CryptoJS.enc.Base64.parse(ciphertext_b64),
+                bundle = {
+                    key: key,
+                    iv: iv,
+                    ciphertext: ciphertext
+                };
+            var plaintext = CryptoJS.AES.decrypt(bundle, key, {
+                iv: iv,
+                padding: CryptoJS.pad.NoPadding
+            });
+            try {
+                return strip_padding(plaintext.toString(CryptoJS.enc.Utf8), padding_char);
+            } catch (err) {
+                // encoding failed; wrong password
+                return false;
+            }
+        };
+
+        var init_decryptor = function() {
+            var password_input = document.getElementById('mkdocs-content-password');
+            var encrypted_content = document.getElementById('mkdocs-encrypted-content');
+            var decrypted_content = document.getElementById('mkdocs-decrypted-content');
+            var decrypt_form = document.getElementById('mkdocs-decrypt-form');
+
+            password_input.addEventListener('keypress', function(event) {
+                if (event.key === "Enter") {
+                    document.cookie = "mkdocs_encrypted_password=" + password_input.value;
+                    load_content(password_input.value);
+                }
+            });
+
+            function load_content(password) {
+                // grab the ciphertext bundle
+                var parts = encrypted_content.innerHTML.split(';');
+
+                var content = decrypt_content(
+                    password,
+                    parts[0],
+                    parts[1],
+                    parts[2]
+                );
+
+                if (content) {
+                    var newDoc = document.open("text/html", "replace");
+                    newDoc.write(content);
+                    newDoc.close();
+                }
+            }
+
+            // Runs on-load
+            var cookieValue = document.cookie.replace(/(?:(?:^|.*;\s*)mkdocs_encrypted_password\s*\=\s*([^;]*).*$)|^.*$/, "$1");
+            console.log(cookieValue);
+            load_content(cookieValue);
+        };
+        document.addEventListener('DOMContentLoaded', init_decryptor);
+    })();
+</script>
